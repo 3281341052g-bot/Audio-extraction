@@ -45,7 +45,7 @@ export default function Home() {
         throw new Error(errData.error || 'Failed to parse playlist');
       }
 
-      const { segments, isSingleFile, format } = await parseRes.json();
+      const { segments, isSingleFile, format, isServerStream } = await parseRes.json();
 
       if (!segments || segments.length === 0) {
         throw new Error('无法从链接中找到音频内容。');
@@ -55,8 +55,9 @@ export default function Home() {
         setStatus('downloading');
         setProgress({ current: 0, total: 1 });
 
-        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(segments[0])}`;
-        const res = await fetch(proxiedUrl);
+        // isServerStream: URL is already a server-side streaming endpoint (e.g. YouTube)
+        const fetchUrl = isServerStream ? segments[0] : `/api/proxy?url=${encodeURIComponent(segments[0])}`;
+        const res = await fetch(fetchUrl);
         if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
 
         // Detect actual format from Content-Type header
@@ -65,9 +66,10 @@ export default function Home() {
         if (ct.includes('audio/mpeg') || ct.includes('mp3')) detectedExt = 'mp3';
         else if (ct.includes('audio/mp4') || ct.includes('m4a') || ct.includes('aac')) detectedExt = 'm4a';
         else if (ct.includes('video/mp4') || ct.includes('mpeg4')) detectedExt = 'mp4';
-        // If server explicitly said mp3 or mp4, trust that over Content-Type
+        // If server explicitly said mp3/mp4/webm, trust that over Content-Type
         if (format === 'mp3') detectedExt = 'mp3';
         if (format === 'mp4') detectedExt = 'mp4';
+        if (format === 'webm' || ct.includes('audio/webm') || ct.includes('video/webm')) detectedExt = 'webm';
 
         const buf = await res.arrayBuffer();
         setProgress({ current: 1, total: 1 });
@@ -119,8 +121,8 @@ export default function Home() {
           }
         }
 
-        // Audio file (mp3 / m4a) → use directly
-        const mimeMap: Record<string, string> = { mp3: 'audio/mpeg', m4a: 'audio/mp4' };
+        // Audio file (mp3 / m4a / webm) → use directly
+        const mimeMap: Record<string, string> = { mp3: 'audio/mpeg', m4a: 'audio/mp4', webm: 'audio/webm' };
         const mime = mimeMap[detectedExt] || ct || 'audio/mp4';
         setAudioFormat(detectedExt);
         setStatus('combining');

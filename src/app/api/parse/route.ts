@@ -1,8 +1,4 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
 
 let cachedClientId: string | null = null;
 let clientIdTime: number = 0;
@@ -255,15 +251,10 @@ export async function POST(req: Request) {
         }
 
 
-        // YouTube / yt-dlp
+        // YouTube / yt-dlp — return a server-side streaming URL (IP-bound direct links can't be proxied)
         if (url.includes('youtube.com/') || url.includes('youtu.be/') || url.includes('youtube.com/shorts/')) {
-            const { stdout } = await execAsync(
-                `yt-dlp --get-url --format "bestaudio" --no-playlist "${url}"`,
-                { timeout: 30000 }
-            );
-            const audioUrl = stdout.trim().split('\n')[0];
-            if (!audioUrl) throw new Error('无法从该 YouTube 视频中提取音频。');
-            return NextResponse.json({ segments: [audioUrl], raw: audioUrl, isSingleFile: true, format: 'mp3' });
+            const streamUrl = `/api/youtube?url=${encodeURIComponent(url)}`;
+            return NextResponse.json({ segments: [streamUrl], raw: streamUrl, isSingleFile: true, format: 'webm', isServerStream: true });
         }
 
         // Standard M3U8 Fetching
