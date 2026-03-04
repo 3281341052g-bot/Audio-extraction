@@ -55,8 +55,16 @@ export default function Home() {
         setStatus('downloading');
         setProgress({ current: 0, total: 1 });
 
-        // Internal API paths (e.g. /api/youtube) are fetched directly; external URLs go through proxy
-        const fetchUrl = (isServerStream || segments[0].startsWith('/api/')) ? segments[0] : `/api/proxy?url=${encodeURIComponent(segments[0])}`;
+        // Server-side streaming URLs (e.g. /api/youtube): set directly as audio src, no fetch needed
+        if (isServerStream || segments[0].startsWith('/api/')) {
+          setAudioFormat(format || 'mp3');
+          setProgress({ current: 1, total: 1 });
+          setFinalAudioUrl(segments[0]);
+          setStatus('done');
+          return;
+        }
+
+        const fetchUrl = `/api/proxy?url=${encodeURIComponent(segments[0])}`;
         const res = await fetch(fetchUrl);
         if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`);
 
