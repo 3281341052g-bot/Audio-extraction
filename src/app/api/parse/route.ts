@@ -146,12 +146,21 @@ export async function POST(req: Request) {
             // So we can just return this directly as a segment of 1.
             return NextResponse.json({ segments: [qishuiUrl], raw: qishuiUrl, isSingleFile: true });
         } else if (url.includes('v.douyin.com') || url.includes('douyin.com/video/') || url.includes('douyin.com/share/video') || url.includes('iesdouyin.com/share/video')) {
-            // Douyin (TikTok China) video audio extraction
+            const timeout = (ms: number) => new AbortController().signal;
+            const fetchWithTimeout = (u: string, opts: RequestInit = {}, ms = 10000) => {
+                const ctrl = new AbortController();
+                setTimeout(() => ctrl.abort(), ms);
+                return fetch(u, { ...opts, signal: ctrl.signal });
+            };
+
+            const decodeJsonUrl = (u: string) => { try { return JSON.parse('"' + u + '"') as string; } catch { return u; } };
+            void timeout; // suppress unused warning
+
             let resolvedUrl = url;
 
             // Follow short-link redirect
             if (url.includes('v.douyin.com')) {
-                const redirectRes = await fetch(url, {
+                const redirectRes = await fetchWithTimeout(url, {
                     method: 'GET',
                     redirect: 'follow',
                     headers: {
@@ -161,7 +170,6 @@ export async function POST(req: Request) {
                     }
                 });
                 resolvedUrl = redirectRes.url;
-                console.log('Redirected Douyin URL:', resolvedUrl);
             }
 
             // Extract video ID
@@ -172,29 +180,28 @@ export async function POST(req: Request) {
                 throw new Error(`无法解析抖音视频ID，实际地址：${resolvedUrl}`);
             }
             const videoId = videoIdMatch[1];
-            console.log('Douyin video ID:', videoId);
 
-            // Fetch the video page on douyin.com (Next.js SSR, embeds _ROUTER_DATA)
+            // Fetch douyin.com page and share page in parallel
             const douyinPageUrl = `https://www.douyin.com/video/${videoId}`;
-            const pageRes = await fetch(douyinPageUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'zh-CN,zh;q=0.9',
-                    'Referer': 'https://www.douyin.com/',
-                }
-            });
-            const html = await pageRes.text();
-            // Helper: decode JSON-escaped URLs (\u002F -> /  and \/ -> /)
-            // JSON.parse handles all JSON escape sequences natively
-            const decodeJsonUrl = (u: string) => { try { return JSON.parse('"' + u + '"') as string; } catch { return u; } };
+            const [pageRes, shareRes] = await Promise.all([
+                fetchWithTimeout(douyinPageUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'zh-CN,zh;q=0.9',
+                        'Referer': 'https://www.douyin.com/',
+                    }
+                }).catch(() => null),
+                fetchWithTimeout(resolvedUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                        'Accept-Language': 'zh-CN,zh;q=0.9',
+                    }
+                }).catch(() => null),
+            ]);
 
-
-            console.log('Douyin page length:', html.length,
-                '| _ROUTER_DATA:', html.includes('_ROUTER_DATA'),
-                '| RENDER_DATA:', html.includes('RENDER_DATA'),
-                '| play_url:', html.includes('play_url'),
-                '| playwm:', html.includes('playwm'));
+            const html = pageRes ? await pageRes.text() : '';
+            const shareHtml = shareRes ? await shareRes.text() : '';
 
             // Try all known douyin.com data-embedding patterns
             const routerPatterns = [
@@ -211,7 +218,6 @@ export async function POST(req: Request) {
                     const raw = m[1];
                     const data = JSON.parse(raw.startsWith('%') ? decodeURIComponent(raw) : raw);
                     const dataStr = JSON.stringify(data);
-                    // Music URL (priority)
                     const muMatch = dataStr.match(/"play_url":\{"uri":"([^"]+)","url_list":\["([^"]+)"/) ||
                         dataStr.match(/"music_url":\{"uri":"([^"]+)","url_list":\["([^"]+)"/);
                     if (muMatch) {
@@ -221,17 +227,7 @@ export async function POST(req: Request) {
                 } catch { /* continue */ }
             }
 
-            // Fallback: iesdouyin share page (SSR embeds watermarked video URL as JSON)
-            const shareRes = await fetch(resolvedUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                    'Accept-Language': 'zh-CN,zh;q=0.9',
-                }
-            });
-            const shareHtml = await shareRes.text();
-            console.log('share page length:', shareHtml.length, 'has playwm:', shareHtml.includes('playwm'));
-
-            // Music first (mp3) - search for music play_url
+            // Search share page for music URL
             const shareMusicPatterns = [
                 /"play_url":\{"uri":"[^"]+","url_list":\["([^"]+)"/,
                 /"music_url":"(https?[^"]+)"/,
@@ -242,7 +238,6 @@ export async function POST(req: Request) {
                 if (m) {
                     const mu = decodeJsonUrl(m[m.length - 1]);
                     if (mu.startsWith('http')) {
-                        console.log('Found music URL from share page');
                         return NextResponse.json({ segments: [mu], raw: mu, isSingleFile: true, format: 'mp3' });
                     }
                 }
