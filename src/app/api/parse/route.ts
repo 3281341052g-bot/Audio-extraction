@@ -185,7 +185,43 @@ export async function POST(req: Request) {
                 throw new Error('无法获取该抖音音乐的下载链接。');
             }
 
-            // Extract video ID
+            const isTikTok = resolvedUrl.includes('tiktok.com');
+
+            // TikTok: scrape page for embedded UNIVERSAL_DATA (music.playUrl)
+            if (isTikTok) {
+                const pageRes = await fetchWithTimeout(resolvedUrl, {
+                    headers: { 'User-Agent': mobileUA, 'Accept-Language': 'en-US,en;q=0.9' }
+                });
+                if (pageRes.ok) {
+                    const pageHtml = await pageRes.text();
+                    const jsonMatch = pageHtml.match(/__UNIVERSAL_DATA_FOR_REHYDRATION__[^>]+>(\{[\s\S]*?)<\/script>/);
+                    if (jsonMatch) {
+                        try {
+                            const data = JSON.parse(jsonMatch[1]);
+                            const findMusic = (obj: unknown, depth = 0): string | null => {
+                                if (depth > 10 || !obj || typeof obj !== 'object') return null;
+                                const o = obj as Record<string, unknown>;
+                                if (o.music && typeof o.music === 'object') {
+                                    const mu = o.music as Record<string, unknown>;
+                                    if (typeof mu.playUrl === 'string' && mu.playUrl.startsWith('http')) return mu.playUrl;
+                                }
+                                for (const v of Object.values(o)) {
+                                    const found = findMusic(v, depth + 1);
+                                    if (found) return found;
+                                }
+                                return null;
+                            };
+                            const musicUrl = findMusic(data);
+                            if (musicUrl) {
+                                return NextResponse.json({ segments: [musicUrl], raw: musicUrl, isSingleFile: true, format: 'mp3' });
+                            }
+                        } catch { /* continue */ }
+                    }
+                }
+                throw new Error('无法从该 TikTok 视频中提取音乐，该视频可能没有背景音乐或已设为私密。');
+            }
+
+            // Douyin: use mobile API
             const videoIdMatch = resolvedUrl.match(/video\/(\d+)/) ||
                 resolvedUrl.match(/aweme_id=(\d+)/) ||
                 resolvedUrl.match(/\/(\d{15,19})\//);
@@ -194,7 +230,6 @@ export async function POST(req: Request) {
             }
             const videoId = videoIdMatch[1];
 
-            // Use Douyin mobile API to get music info directly
             const mobileApiUrl = `https://api.amemv.com/aweme/v1/feed/?aweme_id=${videoId}&version_code=110101&version_name=11.1.0`;
             const apiRes = await fetchWithTimeout(mobileApiUrl, { headers: { 'User-Agent': douyinUA } });
             if (apiRes.ok) {
