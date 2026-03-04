@@ -194,24 +194,28 @@ export async function POST(req: Request) {
                 });
                 if (pageRes.ok) {
                     const pageHtml = await pageRes.text();
-                    const jsonMatch = pageHtml.match(/__UNIVERSAL_DATA_FOR_REHYDRATION__[^>]+>(\{[\s\S]*?)<\/script>/);
-                    if (jsonMatch) {
+                    const findMusicInData = (obj: unknown, depth = 0): string | null => {
+                        if (depth > 12 || !obj || typeof obj !== 'object') return null;
+                        const o = obj as Record<string, unknown>;
+                        if (o.music && typeof o.music === 'object') {
+                            const mu = o.music as Record<string, unknown>;
+                            if (typeof mu.playUrl === 'string' && mu.playUrl.startsWith('http')) return mu.playUrl;
+                        }
+                        for (const v of Object.values(o)) {
+                            const found = findMusicInData(v, depth + 1);
+                            if (found) return found;
+                        }
+                        return null;
+                    };
+
+                    // Try all script tags for music.playUrl
+                    const scriptMatches = [...pageHtml.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+                    for (const sm of scriptMatches) {
+                        const content = sm[1].trim();
+                        if (!content.startsWith('{')) continue;
                         try {
-                            const data = JSON.parse(jsonMatch[1]);
-                            const findMusic = (obj: unknown, depth = 0): string | null => {
-                                if (depth > 10 || !obj || typeof obj !== 'object') return null;
-                                const o = obj as Record<string, unknown>;
-                                if (o.music && typeof o.music === 'object') {
-                                    const mu = o.music as Record<string, unknown>;
-                                    if (typeof mu.playUrl === 'string' && mu.playUrl.startsWith('http')) return mu.playUrl;
-                                }
-                                for (const v of Object.values(o)) {
-                                    const found = findMusic(v, depth + 1);
-                                    if (found) return found;
-                                }
-                                return null;
-                            };
-                            const musicUrl = findMusic(data);
+                            const data = JSON.parse(content);
+                            const musicUrl = findMusicInData(data);
                             if (musicUrl) {
                                 return NextResponse.json({ segments: [musicUrl], raw: musicUrl, isSingleFile: true, format: 'mp3' });
                             }
