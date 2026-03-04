@@ -218,12 +218,6 @@ export async function POST(req: Request) {
                         const mu = decodeJsonUrl(muMatch[2] || muMatch[1]);
                         if (mu.startsWith('http')) return NextResponse.json({ segments: [mu], raw: mu, isSingleFile: true, format: 'mp3' });
                     }
-                    // Video URL
-                    const vuMatch = dataStr.match(/"play_addr":\{"uri":"[^"]*","url_list":\["([^"]+)"/);
-                    if (vuMatch) {
-                        const vu = decodeJsonUrl(vuMatch[1]);
-                        if (vu.startsWith('http')) return NextResponse.json({ segments: [vu], raw: vu, isSingleFile: true, format: 'mp4' });
-                    }
                 } catch { /* continue */ }
             }
 
@@ -254,29 +248,7 @@ export async function POST(req: Request) {
                 }
             }
 
-            // Video (mp4 with watermark) - broad search
-            const shareVideoPatterns = [
-                // Broad: find any URL on snssdk.com/playwm
-                /(https?(?::|\\u003A)(?:\/|\\u002F){2}aweme\.snssdk\.com(?:\/|\\u002F)aweme(?:\/|\\u002F)v1(?:\/|\\u002F)playwm(?:\/|\\u002F)[^"\s<]{10,})/,
-                // Direct text search for playwm URLs
-                /playwm[^"]{0,30}?video_id[^"]{0,200}/,
-                // play_addr url_list pattern  
-                /"play_addr":\{[^\[]{0,500}"url_list":\["([^"]+)"/,
-                /"url_list":\["(https?[^"]*playwm[^"]*)"/,
-            ];
-            for (const pat of shareVideoPatterns) {
-                const m = shareHtml.match(pat);
-                if (m) {
-                    const raw = m[m.length - 1] || m[0];
-                    const vu = decodeJsonUrl(raw);
-                    if (vu.startsWith('http')) {
-                        console.log('Found video URL from share page:', vu.substring(0, 80));
-                        return NextResponse.json({ segments: [vu], raw: vu, isSingleFile: true, format: 'mp4' });
-                    }
-                }
-            }
-
-            throw new Error('无法从该抖音视频提取音频，视频可能已删除或设为私密。');
+            throw new Error('无法从该抖音视频中提取音乐，该视频可能没有背景音乐、已删除或设为私密。');
 
         }
 
