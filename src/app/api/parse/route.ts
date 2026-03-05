@@ -272,6 +272,12 @@ export async function POST(req: Request) {
             throw new Error('无法从该快手视频中提取音频，请检查链接是否有效。');
         }
 
+        // 网易云音乐短链接跳转
+        if (url.includes('163cn.tv')) {
+            const r = await fetch(url, { method: 'GET', redirect: 'manual' });
+            url = r.headers.get('location') || url;
+        }
+
         // 网易云音乐
         if (url.includes('music.163.com')) {
             const streamUrl = `/api/youtube?url=${encodeURIComponent(url)}`;
