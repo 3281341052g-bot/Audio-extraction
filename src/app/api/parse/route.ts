@@ -274,8 +274,8 @@ export async function POST(req: Request) {
 
         // 网易云音乐短链接跳转
         if (url.includes('163cn.tv')) {
-            const r = await fetch(url, { method: 'GET', redirect: 'manual' });
-            url = r.headers.get('location') || url;
+            const r = await fetch(url, { method: 'GET', redirect: 'follow' });
+            url = r.url || url;
         }
 
         // 网易云音乐
