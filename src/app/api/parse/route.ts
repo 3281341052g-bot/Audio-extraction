@@ -272,6 +272,12 @@ export async function POST(req: Request) {
             throw new Error('无法从该快手视频中提取音频，请检查链接是否有效。');
         }
 
+        // 网易云音乐
+        if (url.includes('music.163.com')) {
+            const streamUrl = `/api/youtube?url=${encodeURIComponent(url)}`;
+            return NextResponse.json({ segments: [streamUrl], raw: streamUrl, isSingleFile: true, format: 'mp3', isServerStream: true });
+        }
+
         // YouTube / yt-dlp — return a server-side streaming URL (IP-bound direct links can't be proxied)
         if (url.includes('youtube.com/') || url.includes('youtu.be/') || url.includes('youtube.com/shorts/')) {
             const streamUrl = `/api/youtube?url=${encodeURIComponent(url)}`;
