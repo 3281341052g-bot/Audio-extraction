@@ -279,7 +279,7 @@ export async function POST(req: Request) {
         }
 
         // 网易云音乐
-        if (url.includes('music.163.com')) {
+        if (url.includes('music.163.com') || url.includes('y.music.163.com')) {
             const streamUrl = `/api/youtube?url=${encodeURIComponent(url)}`;
             return NextResponse.json({ segments: [streamUrl], raw: streamUrl, isSingleFile: true, format: 'mp3', isServerStream: true });
         }
