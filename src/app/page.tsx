@@ -253,6 +253,7 @@ export default function Home() {
                 className="w-full bg-transparent border-none py-5 pl-6 pr-14 sm:pl-4 sm:pr-14 text-lg md:text-xl text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-0 font-medium"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && url.trim() && !['parsing','downloading','combining','converting'].includes(status)) startProcess(); }}
                 autoComplete="off"
                 spellCheck="false"
               />
