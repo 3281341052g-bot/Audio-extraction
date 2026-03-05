@@ -264,13 +264,10 @@ export async function POST(req: Request) {
             const html = await pageRes.text();
             // Extract first mp4 URL from mainMvUrls
             const mvMatch = html.match(/"mainMvUrls"\s*:\s*\[\s*\{[^}]*"url"\s*:\s*"(https:\/\/[^"]+\.mp4[^"]*)"/);
-            if (mvMatch) {
-                return NextResponse.json({ segments: [mvMatch[1]], raw: mvMatch[1], isSingleFile: true, format: 'mp4' });
-            }
-            // Fallback: any kwaicdn/kwimgs mp4
-            const mp4Match = html.match(/"url"\s*:\s*"(https:\/\/[^"]*(?:kwaicdn|kwimgs)[^"]+\.mp4[^"]*)"/);
-            if (mp4Match) {
-                return NextResponse.json({ segments: [mp4Match[1]], raw: mp4Match[1], isSingleFile: true, format: 'mp4' });
+            const mp4Url = mvMatch?.[1] ?? html.match(/"url"\s*:\s*"(https:\/\/[^"]*(?:kwaicdn|kwimgs)[^"]+\.mp4[^"]*)"/)?.[1];
+            if (mp4Url) {
+                const streamUrl = `/api/youtube?url=${encodeURIComponent(mp4Url)}&direct=1`;
+                return NextResponse.json({ segments: [streamUrl], raw: streamUrl, isSingleFile: true, format: 'mp3', isServerStream: true });
             }
             throw new Error('无法从该快手视频中提取音频，请检查链接是否有效。');
         }
